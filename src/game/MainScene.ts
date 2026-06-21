@@ -420,9 +420,8 @@ export default class MainScene extends Phaser.Scene {
     this.streak = 0;
 
     const w = this.scale.width;
-    const h = this.scale.height;
     this.xRatio = w / 400;
-    this.yRatio = h / 800;
+    this.yRatio = this.scale.height / 800;
     this.beltY = Math.round(380 * this.yRatio);
     this.pipeY = Math.round(145 * this.yRatio);
     this.tapXList = [Math.round(80 * this.xRatio), Math.round(200 * this.xRatio), Math.round(320 * this.xRatio)];
