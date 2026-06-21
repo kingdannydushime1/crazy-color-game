@@ -473,6 +473,14 @@ export default class MainScene extends Phaser.Scene {
       Audio.initAudio();
     });
 
+    this.input.keyboard!.on('keydown-F', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
     // Determine total flasks for this level dynamically based on actual loaded/reset level
     if (this.level <= 1) {
         this.totalFlasksInLevel = 1;
