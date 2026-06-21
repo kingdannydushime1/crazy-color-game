@@ -178,6 +178,7 @@ export default class MainScene extends Phaser.Scene {
   private tapIndicators: Phaser.GameObjects.Arc[] = [];
   private tapData: Array<{ color: number, type: string, x: number, cont: Phaser.GameObjects.Container, handle: Phaser.GameObjects.Graphics, spout: Phaser.GameObjects.Graphics }> = [];
   private xRatio = 1;
+  private yRatio = 1;
   
   private tapXList = [80, 200, 320];
   private tapColorsOriginal = [Colors.RYB.R, Colors.RYB.B, Colors.RYB.Y];
@@ -416,12 +417,14 @@ export default class MainScene extends Phaser.Scene {
 
   create() {
     this.score = 0;
-    // this.coins is preserved from init() or class default properties
     this.streak = 0;
-    // this.level is preserved from init() or class default properties
 
     const w = this.scale.width;
+    const h = this.scale.height;
     this.xRatio = w / 400;
+    this.yRatio = h / 800;
+    this.beltY = Math.round(380 * this.yRatio);
+    this.pipeY = Math.round(145 * this.yRatio);
     this.tapXList = [Math.round(80 * this.xRatio), Math.round(200 * this.xRatio), Math.round(320 * this.xRatio)];
 
     // Reset transient refs cleanly
@@ -1913,7 +1916,7 @@ export default class MainScene extends Phaser.Scene {
 
   createPanel() {
     const w = this.scale.width;
-    const panelY = 480; 
+    const panelY = Math.round(480 * this.yRatio); 
     
     const panel = this.add.graphics().setDepth(50);
     const rp = this.xRatio;
@@ -2294,7 +2297,7 @@ export default class MainScene extends Phaser.Scene {
      if (!this.beltGraphics) return;
      const bg = this.beltGraphics;
      bg.clear();
-     const beltH = 80;
+    const beltH = Math.round(80 * this.yRatio);
      const segmentWidth = 60;
      const w = this.scale.width;
      
@@ -2907,7 +2910,7 @@ export default class MainScene extends Phaser.Scene {
     this.activePanelElements = [];
 
     const w = this.scale.width;
-    const panelY = 480;
+    const panelY = Math.round(480 * this.yRatio);
 
     // The 3 colors/taps are always available (unlocked)
     const enabledIndices = [0, 1, 2];

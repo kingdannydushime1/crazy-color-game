@@ -13,15 +13,18 @@ export default function App() {
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const aspect = vw / vh;
+
       let gameWidth: number, gameHeight: number;
 
-      if (aspect > 0.8) {
-        gameWidth = 600;
-        gameHeight = 800;
+      if (aspect > 1.2) {
+        gameWidth = Math.min(vw, 600);
+        gameHeight = Math.min(vh, Math.round(gameWidth / 0.75));
       } else {
-        gameWidth = Math.min(vw, 480);
-        gameHeight = Math.round(gameWidth / 0.6);
+        gameHeight = Math.min(vh, 800);
+        gameWidth = Math.min(vw, Math.round(gameHeight * Math.min(aspect, 0.6)));
       }
+      gameWidth = Phaser.Math.Clamp(gameWidth, 320, 600);
+      gameHeight = Phaser.Math.Clamp(gameHeight, 500, 900);
 
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
@@ -62,8 +65,10 @@ export default function App() {
           const nh = window.innerHeight;
           const na = nw / nh;
           let gw: number, gh: number;
-          if (na > 0.8) { gw = 600; gh = 800; }
-          else { gw = Math.min(nw, 480); gh = Math.round(gw / 0.6); }
+          if (na > 1.2) { gw = Math.min(nw, 600); gh = Math.min(nh, Math.round(gw / 0.75)); }
+          else { gh = Math.min(nh, 800); gw = Math.min(nw, Math.round(gh * Math.min(na, 0.6))); }
+          gw = Phaser.Math.Clamp(gw, 320, 600);
+          gh = Phaser.Math.Clamp(gh, 500, 900);
           gameRef.current.scale.resize(gw, gh);
         }
       };
@@ -77,8 +82,10 @@ export default function App() {
             const nh = window.innerHeight;
             const na = nw / nh;
             let gw: number, gh: number;
-            if (na > 0.8) { gw = 600; gh = 800; }
-            else { gw = Math.min(nw, 480); gh = Math.round(gw / 0.6); }
+            if (na > 1.2) { gw = Math.min(nw, 600); gh = Math.min(nh, Math.round(gw / 0.75)); }
+            else { gh = Math.min(nh, 800); gw = Math.min(nw, Math.round(gh * Math.min(na, 0.6))); }
+            gw = Phaser.Math.Clamp(gw, 320, 600);
+            gh = Phaser.Math.Clamp(gh, 500, 900);
             gameRef.current.scale.resize(gw, gh);
           }
         }, 200);
