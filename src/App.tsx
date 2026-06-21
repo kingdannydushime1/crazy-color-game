@@ -61,7 +61,7 @@ export default function App() {
     <div
       className="w-screen h-dvh bg-[#0a0a0f] touch-none select-none overflow-hidden flex items-center justify-center"
     >
-      <div id="phaser-container" className="w-full h-full max-h-[900px]" />
+      <div id="phaser-container" className="w-full h-full" />
     </div>
   );
 }
