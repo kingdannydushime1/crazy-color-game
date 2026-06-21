@@ -1,6 +1,13 @@
 let audioCtx: AudioContext | null = null;
 let bgAudio: HTMLAudioElement | null = null;
 let bgMusicEnabled = false;
+let masterVolume = 0.7;
+
+export const getMasterVolume = () => masterVolume;
+export const setMasterVolume = (v: number) => {
+  masterVolume = Math.max(0, Math.min(1, v));
+  if (bgAudio) bgAudio.volume = masterVolume * 0.35;
+};
 
 export const initAudio = () => {
   if (!audioCtx) {
@@ -303,6 +310,59 @@ export const playWhoosh = () => {
   osc.stop(now + 0.15);
 };
 
+export const playClick = () => {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800, now);
+  osc.frequency.exponentialRampToValueAtTime(600, now + 0.04);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.1, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(now + 0.06);
+};
+
+export const playBlip = () => {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(1200, now);
+  osc.frequency.exponentialRampToValueAtTime(1800, now + 0.06);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.08, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(now + 0.08);
+};
+
+export const playCelebration = () => {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const notes = [523.25, 659.25, 783.99, 1046.50, 1318.52, 1567.98, 2093.00];
+  notes.forEach((freq, idx) => {
+    const osc = audioCtx!.createOscillator();
+    const gain = audioCtx!.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+    gain.gain.setValueAtTime(0, now + idx * 0.05);
+    gain.gain.linearRampToValueAtTime(0.12, now + idx * 0.05 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.35);
+    osc.connect(gain);
+    gain.connect(audioCtx!.destination);
+    osc.start(now + idx * 0.05);
+    osc.stop(now + idx * 0.05 + 0.35);
+  });
+};
+
 export const playSplash = () => {
   if (!audioCtx) return;
   const now = audioCtx.currentTime;
@@ -363,3 +423,9 @@ export const toggleBgMusic = (): boolean => {
 };
 
 export const isBgMusicEnabled = () => bgMusicEnabled;
+
+export const haptic = (ms = 10) => {
+  if (navigator && navigator.vibrate) {
+    navigator.vibrate(ms);
+  }
+};

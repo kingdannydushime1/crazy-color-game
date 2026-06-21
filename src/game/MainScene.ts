@@ -133,6 +133,13 @@ export default class MainScene extends Phaser.Scene {
   private isLevelSuccessPopupOpen = false;
   private initialTimerForFlask = 30;
   private levelCoinsEarnedInSession = 0;
+  private currentChallengeModifier: string | null = null;
+  private challengeModifiers = [
+    { id: 'speed', name: '⚡ SPEED', desc: 'Fast completion = 2x coins!', color: '#ffeb3b', rewardMult: 2, timeLimit: 12 },
+    { id: 'precision', name: '🎯 PRECISION', desc: 'Must be >95% match!', color: '#ff6b81', rewardMult: 1.5, timeLimit: 25 },
+    { id: 'bonus', name: '💰 BONUS', desc: '2x coins!', color: '#ffd700', rewardMult: 2, timeLimit: 20 },
+  ];
+  private challengeModifierText: Phaser.GameObjects.Text | null = null;
   private activeConfettiGroup!: Phaser.GameObjects.Group;
   private undoIndicatorText!: Phaser.GameObjects.Text;
   private musicIcon!: Phaser.GameObjects.Text;
@@ -252,6 +259,153 @@ export default class MainScene extends Phaser.Scene {
      }
   }
 
+  checkDailyReward() {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    const lastClaim = localStorage.getItem('daily_reward_last_claim');
+    if (lastClaim !== todayStr) {
+      const streakRaw = localStorage.getItem('daily_reward_streak');
+      let streak = streakRaw ? parseInt(streakRaw) : 0;
+      if (!lastClaim) {
+        streak = 0;
+      } else {
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
+        if (lastClaim !== yesterdayStr) streak = 0;
+      }
+      streak++;
+      localStorage.setItem('daily_reward_streak', streak.toString());
+      localStorage.setItem('daily_reward_last_claim', todayStr);
+      const coinsAmount = 50 + streak * 25;
+      this.time.delayedCall(600, () => this.showDailyRewardPopup(coinsAmount, streak));
+    }
+  }
+
+  showDailyRewardPopup(coinsAmount: number, streak: number) {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    this.coins += coinsAmount;
+    this.saveGameState();
+
+    const cont = this.add.container(w/2, h/2).setDepth(1500).setScale(0.5).setAlpha(0);
+    const bg = this.add.rectangle(0, 0, w - 40, 300, 0x0e0f1d, 0.95).setStrokeStyle(3, 0xffd700);
+    const title = this.add.text(0, -100, '🎁 DAILY REWARD! 🎁', { fontSize: '26px', color: '#ffd700', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5);
+    const streakTxt = this.add.text(0, -50, `🔥 ${streak} day streak!`, { fontSize: '16px', color: '#ff6b81', fontStyle: 'bold', fontFamily: 'monospace' }).setOrigin(0.5);
+    const coinIcon = this.add.text(0, -10, '🪙', { fontSize: '42px' }).setOrigin(0.5);
+    const amountTxt = this.add.text(0, 40, `+${coinsAmount} COINS`, { fontSize: '22px', color: '#ffd700', fontStyle: 'bold', fontFamily: 'monospace' }).setOrigin(0.5);
+    const claimBtn = this.add.rectangle(0, 95, 160, 40, 0x10ac84).setStrokeStyle(2, 0x0d7a5e);
+    const claimTxt = this.add.text(0, 95, 'CLAIM ✅', { fontSize: '16px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5);
+    const claimHit = this.add.rectangle(0, 95, 160, 40).setInteractive({ useHandCursor: true });
+    claimHit.on('pointerdown', () => {
+      Audio.initAudio();
+      Audio.playClick();
+      Audio.playCashRegister();
+      Audio.haptic(20);
+      this.spawnCoinRain(15);
+      this.flashScreen(0xffd700, 200);
+      this.tweens.add({ targets: cont, scale: 0.5, alpha: 0, duration: 250, onComplete: () => cont.destroy() });
+      this.updateScoreHUD();
+    });
+
+    cont.add([bg, title, streakTxt, coinIcon, amountTxt, claimBtn, claimTxt, claimHit]);
+    this.tweens.add({ targets: cont, scale: 1, alpha: 1, duration: 400, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: coinIcon, y: -20, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.spawnSparkleBurst(w/2, h/2, 16, 0xffd700);
+    Audio.initAudio();
+    Audio.playCelebration();
+  }
+
+  achievements: { [key: string]: boolean } = {};
+  achievementDefs = [
+    { id: 'first_level', name: 'First Steps', desc: 'Complete level 1', icon: '👶' },
+    { id: 'level_10', name: 'Alchemist', desc: 'Complete level 10', icon: '🧙' },
+    { id: 'perfect_10', name: 'Perfect Mixer', desc: '10 perfect matches', icon: '🎯' },
+    { id: 'spent_5000', name: 'Big Spender', desc: 'Spend 5000 coins', icon: '💰' },
+    { id: 'skins_5', name: 'Collector', desc: 'Own 5 flask skins', icon: '🔮' },
+    { id: 'themes_5', name: 'Interior Designer', desc: 'Own 5 themes', icon: '🎨' },
+    { id: 'coins_10000', name: 'Broke the Bank', desc: 'Earn 10000 coins', icon: '🏦' },
+    { id: 'undos_50', name: 'Undo King', desc: 'Use 50 undos', icon: '↩️' },
+    { id: 'flasks_100', name: 'Dedicated', desc: 'Play 100 flasks', icon: '⚗️' },
+    { id: 'streak_7', name: 'Loyal Player', desc: '7-day login streak', icon: '🔥' },
+  ];
+  achievementStats = { perfectMatches: 0, totalSpent: 0, totalUndosUsed: 0, totalFlasksPlayed: 0 };
+  totalSpentAcrossSessions = 0;
+
+  loadAchievements() {
+    try {
+      const raw = localStorage.getItem('achievements_data');
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.achievements) this.achievements = data.achievements;
+        if (data.stats) this.achievementStats = { ...this.achievementStats, ...data.stats };
+        if (data.totalSpent) this.totalSpentAcrossSessions = data.totalSpent;
+      }
+    } catch (e) {}
+  }
+
+  saveAchievements() {
+    try {
+      localStorage.setItem('achievements_data', JSON.stringify({
+        achievements: this.achievements,
+        stats: this.achievementStats,
+        totalSpent: this.totalSpentAcrossSessions
+      }));
+    } catch (e) {}
+  }
+
+  checkAchievements() {
+    const unlocked: Array<{ id: string; name: string; icon: string }> = [];
+    this.achievementDefs.forEach(def => {
+      if (this.achievements[def.id]) return;
+      let earned = false;
+      switch (def.id) {
+        case 'first_level': earned = this.level > 1; break;
+        case 'level_10': earned = this.level >= 10; break;
+        case 'perfect_10': earned = this.achievementStats.perfectMatches >= 10; break;
+        case 'spent_5000': earned = this.totalSpentAcrossSessions >= 5000; break;
+        case 'skins_5': earned = Object.values(this.ownedSkins).filter(v => v).length >= 5; break;
+        case 'themes_5': earned = Object.values(this.ownedThemes).filter(v => v).length >= 5; break;
+        case 'coins_10000': earned = this.coins >= 10000; break;
+        case 'undos_50': earned = this.achievementStats.totalUndosUsed >= 50; break;
+        case 'flasks_100': earned = this.achievementStats.totalFlasksPlayed >= 100; break;
+        case 'streak_7': earned = parseInt(localStorage.getItem('daily_reward_streak') || '0') >= 7; break;
+      }
+      if (earned) {
+        this.achievements[def.id] = true;
+        unlocked.push({ id: def.id, name: def.name, icon: def.icon });
+      }
+    });
+    if (unlocked.length > 0) {
+      this.saveAchievements();
+      this.time.delayedCall(300, () => this.showAchievementPopup(unlocked));
+    }
+  }
+
+  showAchievementPopup(unlocked: Array<{ id: string; name: string; icon: string }>) {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    unlocked.forEach((ach, idx) => {
+      this.time.delayedCall(idx * 800, () => {
+        const cont = this.add.container(w/2, h/2).setDepth(1600).setScale(0.3).setAlpha(0);
+        const bg = this.add.rectangle(0, 0, 260, 90, 0x1a1a2e, 0.95).setStrokeStyle(3, 0xffd700);
+        const glow = this.add.rectangle(0, 0, 264, 94, 0xffd700, 0.15);
+        const icon = this.add.text(0, -20, ach.icon, { fontSize: '32px' }).setOrigin(0.5);
+        const nameTxt = this.add.text(0, 14, ach.name, { fontSize: '18px', color: '#ffd700', fontStyle: 'bold' }).setOrigin(0.5);
+        const descTxt = this.add.text(0, 32, ach.desc, { fontSize: '10px', color: '#ced6e0', fontFamily: 'monospace' }).setOrigin(0.5);
+        cont.add([bg, glow, icon, nameTxt, descTxt]);
+        this.tweens.add({ targets: cont, scale: 1, alpha: 1, duration: 500, ease: 'Back.easeOut' });
+        this.tweens.add({ targets: glow, scaleX: 1.05, scaleY: 1.05, alpha: 0, duration: 600, yoyo: true, repeat: -1 });
+        this.tweens.add({ targets: cont, delay: 2500, alpha: 0, scale: 0.5, duration: 400, onComplete: () => cont.destroy() });
+        this.flashScreen(0xffd700, 200);
+        Audio.initAudio();
+        Audio.playSparkle();
+        Audio.playCashRegister();
+        this.spawnSparkleBurst(w/2, h/2, 20, 0xffd700);
+      });
+    });
+  }
+
   init(data?: { level?: number; coins?: number }) {
     this.loadGameState();
     if (data) {
@@ -311,6 +465,8 @@ export default class MainScene extends Phaser.Scene {
     };
 
     this.loadGameState();
+    this.loadAchievements();
+    this.checkDailyReward();
 
     this.input.once('pointerdown', () => {
       Audio.startBgMusic();
@@ -1439,19 +1595,25 @@ export default class MainScene extends Phaser.Scene {
                        this.drawFlaskOutlineAndFace(this.targetFlaskCont, this.targetUIOutline);
                        if (this.currentFlask) this.updateFlaskVisuals(this.currentFlask);
                        this.closeColorShop();
-                    } else {
-                       if (this.coins >= SKIN_PRICE) {
-                          this.coins -= SKIN_PRICE;
-                          this.ownedSkins[skinData.id] = true;
-                          this.currentFlaskSkin = skinData.id;
-                          Audio.playCashRegister();
-                          this.updateScoreHUD();
-                          this.saveGameState();
-                          this.drawFlaskGeometry(this.targetUIFlaskLiq, this.currentTargetColor, 1);
-                          this.drawFlaskOutlineAndFace(this.targetFlaskCont, this.targetUIOutline);
-                          if (this.currentFlask) this.updateFlaskVisuals(this.currentFlask);
-                          this.closeColorShop();
-                       } else {
+                     } else {
+                        if (this.coins >= SKIN_PRICE) {
+                           this.coins -= SKIN_PRICE;
+                           this.ownedSkins[skinData.id] = true;
+                           this.currentFlaskSkin = skinData.id;
+                           this.totalSpentAcrossSessions += SKIN_PRICE;
+                           Audio.playCashRegister();
+                           Audio.playSparkle();
+                           this.flashScreen(0xffd700, 150);
+                           this.spawnSparkleBurst(cellX + this.shopLayer!.x, cellY + this.shopLayer!.y + 140, 12, 0xffd700);
+                           this.updateScoreHUD();
+                           this.saveGameState();
+                           this.saveAchievements();
+                           this.checkAchievements();
+                           this.drawFlaskGeometry(this.targetUIFlaskLiq, this.currentTargetColor, 1);
+                           this.drawFlaskOutlineAndFace(this.targetFlaskCont, this.targetUIOutline);
+                           if (this.currentFlask) this.updateFlaskVisuals(this.currentFlask);
+                           this.closeColorShop();
+                        } else {
                           balanceText.setColor('#ff4757');
                           this.tweens.add({
                              targets: balanceText,
@@ -1625,18 +1787,24 @@ export default class MainScene extends Phaser.Scene {
                        this.saveGameState();
                        this.drawBackgroundAndTheme(); // Redraw background on the fly!
                        this.closeColorShop();
-                    } else {
-                       if (this.coins >= theme.price) {
-                          this.coins -= theme.price;
-                          this.ownedThemes[theme.id] = true;
-                          this.currentTheme = theme.id;
-                          Audio.playCashRegister();
-                          this.updateScoreHUD();
-                          this.saveGameState();
-                          
-                          this.drawBackgroundAndTheme(); // Redraw background on the fly!
-                          this.closeColorShop();
-                       } else {
+                     } else {
+                        if (this.coins >= theme.price) {
+                           this.coins -= theme.price;
+                           this.ownedThemes[theme.id] = true;
+                           this.currentTheme = theme.id;
+                           this.totalSpentAcrossSessions += theme.price;
+                           Audio.playCashRegister();
+                           Audio.playSparkle();
+                           this.flashScreen(0xffd700, 150);
+                           this.spawnSparkleBurst(cellX + this.shopLayer!.x, cellY + this.shopLayer!.y + 140, 12, 0xffd700);
+                           this.cameras.main.shake(200, 0.008);
+                           this.updateScoreHUD();
+                           this.saveGameState();
+                           this.saveAchievements();
+                           this.checkAchievements();
+                           this.drawBackgroundAndTheme();
+                           this.closeColorShop();
+                        } else {
                           balanceText.setColor('#ff4757');
                           this.tweens.add({
                              targets: balanceText,
@@ -1782,6 +1950,8 @@ export default class MainScene extends Phaser.Scene {
     const uHit = this.add.rectangle(uBtnX, panelY + 230, 85, 50).setInteractive({ useHandCursor: true }).setDepth(55);
     uHit.on('pointerdown', () => {
         Audio.initAudio();
+        Audio.playClick();
+        Audio.haptic(15);
         uBtn.setScale(0.92);
         if (this.undosRemaining <= 0) {
             Audio.playLaser();
@@ -1828,6 +1998,8 @@ export default class MainScene extends Phaser.Scene {
     const hHit = this.add.rectangle(hBtnX, panelY + 230, 100, 50).setInteractive({ useHandCursor: true }).setDepth(55);
     hHit.on('pointerdown', () => {
         Audio.initAudio();
+        Audio.playClick();
+        Audio.haptic(15);
         hBtn.setScale(0.92);
         hBtnBody.y = 4;
         hBtnIcon.y = 0;
@@ -1860,7 +2032,8 @@ export default class MainScene extends Phaser.Scene {
     const sHit = this.add.rectangle(sBtnX, panelY + 230, 85, 50).setInteractive({ useHandCursor: true }).setDepth(55);
     sHit.on('pointerdown', () => {
         Audio.initAudio();
-        Audio.playWin();
+        Audio.playClick();
+        Audio.haptic(20);
         sBtn.setScale(0.92);
         sBtnBody.y = 4;
         sBtnIcon.y = -1;
@@ -1892,6 +2065,22 @@ export default class MainScene extends Phaser.Scene {
         Audio.initAudio();
         const on = Audio.toggleBgMusic();
         this.musicIcon.setText(on ? '\u266B' : '\u2715');
+    });
+
+    // Volume slider
+    const volLabel = this.add.text(mBtnX, panelY + 205, 'VOL', { fontSize: '7px', color: '#a4b0be', fontFamily: 'monospace' }).setOrigin(0.5).setDepth(55);
+    const volBarBg = this.add.rectangle(mBtnX, panelY + 218, 36, 4, 0x2d3436).setDepth(55);
+    const volBarFill = this.add.rectangle(mBtnX - 17, panelY + 218, 36 * Audio.getMasterVolume(), 4, 0x74b9ff).setOrigin(0, 0.5).setDepth(55);
+    const volKnob = this.add.circle(mBtnX - 17 + 36 * Audio.getMasterVolume(), panelY + 218, 5, 0xdfe6e9).setDepth(56).setInteractive({ useHandCursor: true, draggable: true });
+    const volKnobGlow = this.add.circle(mBtnX - 17 + 36 * Audio.getMasterVolume(), panelY + 218, 8, 0x74b9ff, 0.2).setDepth(55);
+    this.input.setDraggable(volKnob);
+    volKnob.on('drag', (_p: any, dx: number) => {
+      let newX = Phaser.Math.Clamp(volKnob.x + dx, mBtnX - 17, mBtnX + 19);
+      volKnob.x = newX;
+      volKnobGlow.x = newX;
+      const vol = (newX - (mBtnX - 17)) / 36;
+      Audio.setMasterVolume(vol);
+      volBarFill.width = 36 * vol;
     });
 
   }
@@ -2575,12 +2764,22 @@ export default class MainScene extends Phaser.Scene {
     }
   }
 
-   spawnNextFlask() {
-    if (this.completedFlasksInLevel === 0) {
-       this.showLevelIntro(this.level);
-    }
-    const target = Colors.generateTarget(this.level * 10 + this.completedFlasksInLevel);
-    const x = -100;
+    spawnNextFlask() {
+     if (this.completedFlasksInLevel === 0) {
+        this.showLevelIntro(this.level);
+     }
+     // Assign challenge modifier on levels 3+ (25% chance)
+     if (this.level >= 3 && Math.random() < 0.25) {
+       this.currentChallengeModifier = this.challengeModifiers[Phaser.Math.Between(0, this.challengeModifiers.length - 1)].id;
+     } else {
+       this.currentChallengeModifier = null;
+     }
+     const modifier = this.getFlaskModifier();
+     if (modifier && this.completedFlasksInLevel === 0) {
+       this.timeLeft = modifier.timeLimit;
+     }
+     const target = Colors.generateTarget(this.level * 10 + this.completedFlasksInLevel);
+     const x = -100;
     const y = this.beltY - 45; 
 
     const flask = this.add.container(x, y);
@@ -2593,14 +2792,34 @@ export default class MainScene extends Phaser.Scene {
     const outline = this.add.graphics();
     this.drawFlaskOutlineAndFace(flask, outline);
 
+    // Progress Bar background
+    const progressBarBg = this.add.graphics();
+    progressBarBg.fillStyle(0x1e272c, 0.5);
+    progressBarBg.fillRoundedRect(-18, 28, 36, 8, 4);
+    const progressBarFill = this.add.graphics();
+    progressBarFill.fillStyle(0x2ed573, 1);
+    progressBarFill.fillRoundedRect(-18, 28, 0, 8, 4);
+
     // Progress Text
     const progressTxt = this.add.text(0, -65, '0%', { fontSize: '20px', color: '#2f3542', fontStyle: 'bold', stroke: '#fff', strokeThickness: 4 }).setOrigin(0.5);
 
-    flask.add([bg, outline, progressTxt]);
+    // Challenge modifier badge
+    let modBadge: Phaser.GameObjects.Container | null = null;
+    const badgeFlaskMod = this.getFlaskModifier();
+    if (badgeFlaskMod) {
+      modBadge = this.add.container(0, -85);
+      const badgeBg = this.add.rectangle(0, 0, 80, 16, 0x000000, 0.6).setStrokeStyle(1, parseInt(badgeFlaskMod.color.replace('#', '0x')));
+      const badgeTxt = this.add.text(0, 0, badgeFlaskMod.name, { fontSize: '9px', color: badgeFlaskMod.color, fontStyle: 'bold', fontFamily: 'monospace' }).setOrigin(0.5);
+      modBadge.add([badgeBg, badgeTxt]);
+    }
+
+    flask.add([bg, outline, progressBarBg, progressBarFill, progressTxt]);
+    if (modBadge) flask.add(modBadge);
 
     (flask as any).bg = bg;
     (flask as any).outlineGraphics = outline;
     (flask as any).progressTxt = progressTxt;
+    (flask as any).progressBarFill = progressBarFill;
     (flask as any).targetDose = target;
     (flask as any).currentDose = { r: 0, b: 0, y: 0 };
     (flask as any).history = [];
@@ -2654,6 +2873,8 @@ export default class MainScene extends Phaser.Scene {
     } else if (tColor === 0x664422) {
         reward = 150;
     }
+    const flaskMod = this.getFlaskModifier();
+    if (flaskMod) reward = Math.round(reward * flaskMod.rewardMult);
     this.pendingRewardCoins = reward;
     this.targetCoinsText.setText(`$+${reward}`);
 
@@ -2900,6 +3121,21 @@ export default class MainScene extends Phaser.Scene {
        dropG.strokePath();
     }
 
+    // Drop skin particle effects
+    const dropParticleColor = skin.includes('magma') ? 0xff3b30 : skin.includes('plasma') ? 0x00f3ff : skin.includes('solar') ? 0xffea00 : skin.includes('ruby') ? 0xff0044 : skin.includes('sapphire') ? 0x0044ff : skin.includes('topaz') ? 0xff8800 : cfg.color;
+    for (let ip = 0; ip < 4; ip++) {
+      const p = this.add.circle(tx + Phaser.Math.Between(-6, 6), ty + Phaser.Math.Between(-6, 6), Phaser.Math.Between(1.5, 3), dropParticleColor, 0.8).setDepth(26);
+      this.tweens.add({
+        targets: p,
+        x: p.x + Phaser.Math.Between(-20, 20),
+        y: p.y + Phaser.Math.Between(-30, 0),
+        alpha: 0,
+        scale: 0.2,
+        duration: Phaser.Math.Between(200, 400),
+        onComplete: () => p.destroy()
+      });
+    }
+
     const d = this.add.container(tx, ty, [dropG]);
     d.setDepth(25);
     (d as any).colorType = cfg.dispenseType;
@@ -3017,6 +3253,17 @@ export default class MainScene extends Phaser.Scene {
     const matchPercent = Colors.getSimilarityPercentage(f.currentDose, f.targetDose);
     f.progressTxt.setText(`${matchPercent}%`);
     f.progressTxt.setColor(matchPercent === 100 ? '#2ed573' : '#2f3542');
+    if (f.progressBarFill) {
+      f.progressBarFill.clear();
+      const barColor = matchPercent === 100 ? 0x2ed573 : matchPercent > 70 ? 0xf39c12 : 0xff4757;
+      f.progressBarFill.fillStyle(barColor, 1);
+      const fillW = (matchPercent / 100) * 36;
+      f.progressBarFill.fillRoundedRect(-18, 28, fillW, 8, 4);
+      if (matchPercent >= 99.5) {
+        f.progressBarFill.fillStyle(0xffffff, 0.3);
+        f.progressBarFill.fillRoundedRect(-18, 28, fillW, 8, 4);
+      }
+    }
   }
 
   undoDrop(): boolean {
@@ -3637,6 +3884,9 @@ export default class MainScene extends Phaser.Scene {
       this.isValidating = true;
       Audio.initAudio();
       Audio.playBuzzer();
+      Audio.haptic(50);
+      this.cameras.main.shake(400, 0.02);
+      this.flashScreen(0xff4757, 300);
 
       const w = this.scale.width;
       const h = this.scale.height;
@@ -3718,29 +3968,42 @@ export default class MainScene extends Phaser.Scene {
          fontFamily: 'monospace' 
       }).setOrigin(0.5);
 
-      // Display wallet in a stylish golden badge
-      const goldBadge = this.add.graphics();
-      goldBadge.fillStyle(0xd97706, 0.15);
-      goldBadge.lineStyle(2, 0xf59e0b, 1);
-      goldBadge.fillRoundedRect(w/2 - 100, h/2 - 45, 200, 45, 8);
-      goldBadge.strokeRoundedRect(w/2 - 100, h/2 - 45, 200, 45, 8);
-      goCont.add(goldBadge);
+      // Enhanced stats panel
+      const statPanel = this.add.graphics();
+      statPanel.fillStyle(0xd97706, 0.1);
+      statPanel.lineStyle(2, 0xf59e0b, 1);
+      statPanel.fillRoundedRect(w/2 - Math.round(110 * r), h/2 - 60, Math.round(220 * r), 75, 8);
+      statPanel.strokeRoundedRect(w/2 - Math.round(110 * r), h/2 - 60, Math.round(220 * r), 75, 8);
+      goCont.add(statPanel);
 
-      const scoreLabelText = this.add.text(w/2, h/2 - 34, 'TOTAL EARNINGS', {
-         fontSize: '9px',
-         color: '#f59e0b',
-         fontStyle: 'bold',
-         fontFamily: 'monospace'
+      const levelReached = this.add.text(w/2, h/2 - 48, `🏰 Level ${this.level}`, {
+         fontSize: '10px', color: '#ced6e0', fontFamily: 'monospace', fontStyle: 'bold'
+      }).setOrigin(0.5);
+      const flasksDone = this.add.text(w/2, h/2 - 32, `⚗️ ${this.achievementStats.totalFlasksPlayed} flasks mixed`, {
+         fontSize: '10px', color: '#ced6e0', fontFamily: 'monospace'
+      }).setOrigin(0.5);
+      const earningsTxt = this.add.text(w/2, h/2 - 16, `💰 $${this.coins} earned`, {
+         fontSize: '14px', color: '#ffd700', fontFamily: 'monospace', fontStyle: 'bold'
       }).setOrigin(0.5);
 
-      const revenueText = this.add.text(w/2, h/2 - 15, `$ ${this.coins}`, { 
-         fontSize: '20px', 
-         color: '#ffd700', 
-         fontStyle: 'bold', 
-         fontFamily: 'monospace' 
-      }).setOrigin(0.5);
+      goCont.add([goTitle, goSub, levelReached, flasksDone, earningsTxt]);
       
-      goCont.add([goTitle, goSub, scoreLabelText, revenueText]);
+      // Floating coins around the panel
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const dist = Phaser.Math.Between(100, 160);
+        const coin = this.add.text(w/2 + Math.cos(angle) * dist, h/2 + Math.sin(angle) * dist, '🪙', { fontSize: '16px' }).setOrigin(0.5).setAlpha(0.3);
+        goCont.add(coin);
+        this.tweens.add({
+          targets: coin,
+          y: coin.y - 20,
+          alpha: 0.6,
+          duration: 1500 + i * 300,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+      }
 
       // BUTTON 1: WATCH AD FOR +25s TIME (Revive!) - GORGEOUS 3D ARCADE STYLING
       const reviveBtn = this.add.container(w/2, h/2 + 45);
@@ -3958,8 +4221,12 @@ export default class MainScene extends Phaser.Scene {
       return glow;
    }
 
-   showLevelIntro(level: number) {
-      Audio.playWhoosh();
+    getFlaskModifier() {
+      return this.challengeModifiers.find(m => m.id === this.currentChallengeModifier) || null;
+    }
+
+    showLevelIntro(level: number) {
+       Audio.playWhoosh();
       const w = this.scale.width;
       const h = this.scale.height;
       const cont = this.add.container(w / 2, h / 2).setDepth(2000);
@@ -4278,18 +4545,26 @@ export default class MainScene extends Phaser.Scene {
          }
      }
      
-     Audio.initAudio();
-      Audio.playLevelUpSound();
+      Audio.initAudio();
+       Audio.playLevelUpSound();
+       Audio.playCelebration();
 
       this.saveHighScore();
 
-      // Delay play of register coin chime
-     setTimeout(() => {
-         Audio.playCashRegister();
-     }, 500);
-     
-     // Shower with confetti!
-     this.spawnConfettiRain(75);
+      // Big coin win animation!
+      this.flashScreen(0xffd700, 300);
+      this.cameras.main.shake(500, 0.015);
+      this.spawnCoinRain(45);
+      this.spawnConfettiRain(100);
+      setTimeout(() => {
+        const w = this.scale.width;
+        this.spawnSparkleBurst(w/2, this.scale.height/2, 20, 0xffd700);
+        Audio.playCashRegister();
+        Audio.playSparkle();
+      }, 300);
+      setTimeout(() => {
+        Audio.playCashRegister();
+      }, 800);
      
      const w = this.scale.width;
      const h = this.scale.height;
@@ -4413,12 +4688,17 @@ export default class MainScene extends Phaser.Scene {
      nextHit.on('pointerup', () => { nextBtnBody.y = 0; nextBtnText.y = 0; });
      nextHit.on('pointerout', () => { nextBtnBody.y = 0; nextBtnText.y = 0; });
      
-      popup.add([adBtnCont, adHit, nextBtnCont, nextHit]);
-      popup.setScale(0.92).setAlpha(0);
-      this.tweens.add({ targets: popup, scale: 1, alpha: 1, duration: 400, ease: 'Back.easeOut' });
-   }
+       popup.add([adBtnCont, adHit, nextBtnCont, nextHit]);
+       popup.setScale(0.92).setAlpha(0);
+       this.tweens.add({ targets: popup, scale: 1, alpha: 1, duration: 400, ease: 'Back.easeOut' });
 
-   spawnConfettiRain(amount: number) {
+       this.achievementStats.totalFlasksPlayed += this.totalFlasksInLevel;
+       this.achievementStats.perfectMatches += this.totalFlasksInLevel;
+       this.saveAchievements();
+       this.checkAchievements();
+    }
+
+    spawnConfettiRain(amount: number) {
       const colors = [0xff4757, 0x2ed573, 0x1e90ff, 0xffa502, 0xff6b81, 0x70a1ff, 0xff00cc, 0xffff00, 0xffd700, 0xff9ff3];
       for (let i = 0; i < amount; i++) {
           const cx = Phaser.Math.Between(10, this.scale.width - 10);
@@ -4482,11 +4762,86 @@ export default class MainScene extends Phaser.Scene {
       }
    }
 
-  triggerSimulatedCommercialAd() {
+   spawnCoinRain(amount: number) {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      for (let i = 0; i < amount; i++) {
+        const cx = Phaser.Math.Between(20, w - 20);
+        const cy = Phaser.Math.Between(-100, -20);
+        const coin = this.add.circle(cx, cy, Phaser.Math.Between(4, 7), 0xffd700).setDepth(210).setStrokeStyle(1.5, 0xd4a017);
+        const inner = this.add.circle(cx, cy, Phaser.Math.Between(2, 4), 0xffea8c).setDepth(211);
+        this.physics.world.enable(coin);
+        this.physics.world.enable(inner);
+        const cb = coin.body as Phaser.Physics.Arcade.Body;
+        cb.setAllowGravity(true);
+        cb.setGravityY(Phaser.Math.Between(120, 250));
+        cb.setVelocityY(Phaser.Math.Between(50, 150));
+        cb.setVelocityX(Phaser.Math.Between(-60, 60));
+        cb.setDragX(15);
+        cb.setBounce(0.4);
+        const ib = inner.body as Phaser.Physics.Arcade.Body;
+        ib.setAllowGravity(true);
+        ib.setGravityY(Phaser.Math.Between(120, 250));
+        ib.setVelocityY(Phaser.Math.Between(50, 150));
+        ib.setVelocityX(Phaser.Math.Between(-60, 60));
+        ib.setDragX(15);
+        ib.setBounce(0.4);
+        const rotSpeed = Phaser.Math.Between(400, 1200);
+        this.tweens.add({
+          targets: [coin, inner],
+          y: h + 50,
+          duration: Phaser.Math.Between(2000, 4000),
+          ease: 'Quad.easeIn',
+          onComplete: () => { coin.destroy(); inner.destroy(); }
+        });
+        this.tweens.add({
+          targets: coin,
+          scaleY: 0.3,
+          duration: rotSpeed,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+        this.activeConfettiGroup.add(coin);
+        this.activeConfettiGroup.add(inner);
+      }
+   }
+
+   spawnSparkleBurst(cx: number, cy: number, count: number, color: number = 0xffffff) {
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        const dist = Phaser.Math.Between(40, 100);
+        const spark = this.add.circle(cx, cy, Phaser.Math.Between(1.5, 3), color).setDepth(210).setAlpha(1);
+        this.tweens.add({
+          targets: spark,
+          x: cx + Math.cos(angle) * dist,
+          y: cy + Math.sin(angle) * dist,
+          alpha: 0,
+          scale: 0.3,
+          duration: Phaser.Math.Between(300, 600),
+          ease: 'Cubic.easeOut',
+          onComplete: () => spark.destroy()
+        });
+      }
+   }
+
+   flashScreen(color: number = 0xffffff, duration: number = 200) {
+      const w = this.scale.width;
+      const h = this.scale.height;
+      const flash = this.add.rectangle(w/2, h/2, w, h, color, 0.6).setDepth(300);
+      this.tweens.add({
+        targets: flash,
+        alpha: 0,
+        duration,
+        onComplete: () => flash.destroy()
+      });
+   }
+
+   triggerSimulatedCommercialAd() {
       this.showCrazyRewardedAd("CLAIM EXTRA COINS", 3, () => {
           this.startNextLevel(true);
       });
-  }
+   }
 
   startNextLevel(multiplyRewards: boolean) {
      this.isLevelSuccessPopupOpen = false;
